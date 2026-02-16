@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/passwordInput.html" import password_input %}
 
 {% block title %}編輯個人資料 - Flask 使用者登入系統{% endblock %}
 
@@ -26,22 +27,9 @@
                     
                     <h5 class="mb-3">修改密碼（選填）</h5>
                     
-                    <div class="mb-3">
-                        <label for="current_password" class="form-label">目前密碼</label>
-                        <input type="password" class="form-control" id="current_password" name="current_password">
-                        <div class="form-text">僅在要修改密碼時填寫</div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="new_password" class="form-label">新密碼</label>
-                        <input type="password" class="form-control" id="new_password" name="new_password" minlength="6">
-                        <div class="form-text">密碼長度至少 6 個字元</div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="confirm_password" class="form-label">確認新密碼</label>
-                        <input type="password" class="form-control" id="confirm_password" name="confirm_password" minlength="6">
-                    </div>
+                    {{ password_input('current_password', 'current_password', '目前密碼', form_text='僅在要修改密碼時填寫') }}
+                    {{ password_input('new_password', 'new_password', '新密碼', minlength=6, form_text='密碼長度至少 6 個字元') }}
+                    {{ password_input('confirm_password', 'confirm_password', '確認新密碼', minlength=6) }}
                     
                     <div class="d-grid gap-2 d-md-flex justify-content-md-end">
                         <a href="{{ url_for('profile') }}" class="btn btn-outline-secondary">取消</a>

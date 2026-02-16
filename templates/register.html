@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/passwordInput.html" import password_input %}
 
 {% block title %}註冊 - Flask 使用者登入系統{% endblock %}
 
@@ -21,16 +22,8 @@
                         <input type="email" class="form-control" id="email" name="email" required>
                     </div>
                     
-                    <div class="mb-3">
-                        <label for="password" class="form-label">密碼</label>
-                        <input type="password" class="form-control" id="password" name="password" required minlength="6">
-                        <div class="form-text">密碼長度至少 6 個字元</div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="confirm_password" class="form-label">確認密碼</label>
-                        <input type="password" class="form-control" id="confirm_password" name="confirm_password" required minlength="6">
-                    </div>
+                    {{ password_input('password', 'password', '密碼', required=true, minlength=6, form_text='密碼長度至少 6 個字元') }}
+                    {{ password_input('confirm_password', 'confirm_password', '確認密碼', required=true, minlength=6) }}
                     
                     <div class="d-grid mb-3">
                         <button type="submit" class="btn btn-primary btn-lg">註冊</button>

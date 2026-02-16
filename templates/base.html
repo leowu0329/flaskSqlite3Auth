@@ -16,6 +16,9 @@
     <!-- Toastr.js CSS -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css" rel="stylesheet">
     
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    
     <style>
         /* 全域字體樣式 */
         body {
@@ -158,6 +161,29 @@
                 window.location.href = "{{ url_for('logout') }}";
             }
         }
+        
+        // 密碼顯示/隱藏切換（用於 components/passwordInput.html）
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('.password-toggle-btn');
+            if (!btn) return;
+            var inputId = btn.getAttribute('data-password-target');
+            var input = document.getElementById(inputId);
+            if (!input) return;
+            var icon = btn.querySelector('.password-toggle-icon');
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.classList.remove('bi-eye');
+                icon.classList.add('bi-eye-slash');
+                btn.setAttribute('aria-label', '隱藏密碼');
+                btn.setAttribute('title', '隱藏密碼');
+            } else {
+                input.type = 'password';
+                icon.classList.remove('bi-eye-slash');
+                icon.classList.add('bi-eye');
+                btn.setAttribute('aria-label', '顯示密碼');
+                btn.setAttribute('title', '顯示密碼');
+            }
+        });
     </script>
     
     {% block extra_js %}{% endblock %}
