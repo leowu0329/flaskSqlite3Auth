@@ -304,13 +304,18 @@ def index():
 @app.route("/home")
 @login_required
 def home():
-    """登入後的首頁（歡迎頁）"""
-    db = get_db()
-    user = db.execute(
-        "SELECT username, email, email_verified FROM users WHERE id = ?",
-        (session["user_id"],)
-    ).fetchone()
-    return render_template("index.html", user=user)
+    """登入後的主畫面（4x5 按鈕）"""
+    return render_template("index.html")
+
+
+@app.route("/option/<int:num>")
+@login_required
+def option_page(num):
+    """選項獨立頁面（num 為 1～20）"""
+    if num < 1 or num > 20:
+        flash("無此選項", "error")
+        return redirect(url_for("home"))
+    return render_template("option.html", option_num=num)
 
 
 @app.route("/register", methods=["GET", "POST"])
