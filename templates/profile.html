@@ -43,6 +43,51 @@
                     </div>
                 </div>
                 
+                <div class="row mb-3">
+                    <div class="col-sm-4">
+                        <strong>生日：</strong>
+                    </div>
+                    <div class="col-sm-8">
+                        {{ user.birthday or '—' }}
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-sm-4">
+                        <strong>手機：</strong>
+                    </div>
+                    <div class="col-sm-8">
+                        {{ user.phone or '—' }}
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-sm-4">
+                        <strong>住址：</strong>
+                    </div>
+                    <div class="col-sm-8">
+                        {{ user.address or '—' }}
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-sm-4">
+                        <strong>工作轄區：</strong>
+                    </div>
+                    <div class="col-sm-8">
+                        {{ user.work_region or '—' }}
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-sm-4">
+                        <strong>身分：</strong>
+                    </div>
+                    <div class="col-sm-8">
+                        {{ user.role or '一般使用者' }}
+                    </div>
+                </div>
+                
                 <hr>
                 
                 <div class="d-grid gap-2 d-md-flex justify-content-md-end">

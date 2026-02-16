@@ -33,6 +33,11 @@ app.config["MAIL_FROM"] = os.environ.get("MAIL_FROM", app.config["MAIL_USERNAME"
 # SQLite3 資料庫路徑
 DATABASE = Path(__file__).parent / "instance" / "app.db"
 
+# 個人資料選項（工作轄區、身分）
+WORK_REGION_CHOICES = ["", "北北基", "桃竹苗", "中彰投", "雲嘉南", "高屏"]
+ROLE_CHOICES = ["一般使用者", "管理者"]
+DEFAULT_ROLE = "一般使用者"
+
 
 def get_db():
     """取得 SQLite 連線"""
@@ -67,10 +72,28 @@ def init_db():
             verification_token TEXT,
             reset_token TEXT,
             reset_token_expires DATETIME,
+            birthday DATE,
+            phone TEXT,
+            address TEXT,
+            work_region TEXT,
+            role TEXT DEFAULT '一般使用者',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    
+    # 既有資料庫補加新欄位（遷移）
+    for col_sql in [
+        "ALTER TABLE users ADD COLUMN birthday DATE",
+        "ALTER TABLE users ADD COLUMN phone TEXT",
+        "ALTER TABLE users ADD COLUMN address TEXT",
+        "ALTER TABLE users ADD COLUMN work_region TEXT",
+        "ALTER TABLE users ADD COLUMN role TEXT DEFAULT '一般使用者'",
+    ]:
+        try:
+            cursor.execute(col_sql)
+        except sqlite3.OperationalError:
+            pass  # 欄位已存在
     
     # Token 表（用於 API 認證）
     cursor.execute("""
@@ -329,9 +352,9 @@ def register():
         verification_token = generate_token()
         
         db.execute(
-            """INSERT INTO users (username, email, password_hash, verification_token)
-               VALUES (?, ?, ?, ?)""",
-            (username, email, password_hash, verification_token)
+            """INSERT INTO users (username, email, password_hash, verification_token, role)
+               VALUES (?, ?, ?, ?, ?)""",
+            (username, email, password_hash, verification_token, DEFAULT_ROLE)
         )
         db.commit()
         
@@ -574,7 +597,8 @@ def profile():
     """個人資料頁面"""
     db = get_db()
     user = db.execute(
-        "SELECT id, username, email, email_verified, created_at FROM users WHERE id = ?",
+        """SELECT id, username, email, email_verified, created_at,
+                  birthday, phone, address, work_region, role FROM users WHERE id = ?""",
         (session["user_id"],)
     ).fetchone()
     
@@ -590,6 +614,11 @@ def edit_profile():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         email = request.form.get("email", "").strip().lower()
+        birthday = request.form.get("birthday", "").strip() or None
+        phone = request.form.get("phone", "").strip() or None
+        address = request.form.get("address", "").strip() or None
+        work_region = request.form.get("work_region", "").strip() or None
+        role = request.form.get("role", "").strip() or DEFAULT_ROLE
         current_password = request.form.get("current_password", "")
         new_password = request.form.get("new_password", "")
         confirm_password = request.form.get("confirm_password", "")
@@ -656,6 +685,10 @@ def edit_profile():
             update_fields.append("password_hash = ?")
             update_values.append(password_hash)
         
+        # 個人資料欄位（生日、手機、住址、工作轄區、身分）
+        update_fields.extend(["birthday = ?", "phone = ?", "address = ?", "work_region = ?", "role = ?"])
+        update_values.extend([birthday, phone, address, work_region, role])
+        
         if update_fields:
             update_fields.append("updated_at = CURRENT_TIMESTAMP")
             update_values.append(session["user_id"])
@@ -674,11 +707,17 @@ def edit_profile():
         return redirect(url_for("profile"))
     
     user = db.execute(
-        "SELECT id, username, email, email_verified FROM users WHERE id = ?",
+        """SELECT id, username, email, email_verified, birthday, phone, address, work_region, role
+           FROM users WHERE id = ?""",
         (session["user_id"],)
     ).fetchone()
     
-    return render_template("edit_profile.html", user=user)
+    return render_template(
+        "edit_profile.html",
+        user=user,
+        work_region_choices=WORK_REGION_CHOICES,
+        role_choices=ROLE_CHOICES,
+    )
 
 
 # ==================== Token API ====================
