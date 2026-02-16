@@ -35,15 +35,118 @@
             font-family: 'Roboto', sans-serif;
         }
         
-        /* 導航欄樣式 */
-        .navbar-brand {
-            font-weight: 500;
+        /* 側邊欄與主內容版面 */
+        .layout-with-sidebar {
+            display: flex;
+            min-height: 100vh;
+            flex-direction: column;
         }
         
-        /* 主內容區域 */
         .main-content {
+            flex: 1;
             min-height: calc(100vh - 200px);
             padding: 2rem 0;
+            transition: margin-left 0.25s ease;
+        }
+        
+        .page-footer {
+            transition: margin-left 0.25s ease;
+        }
+        
+        body.sidebar-visible .main-content,
+        body.sidebar-visible .page-footer {
+            margin-left: var(--sidebar-width, 240px);
+        }
+        
+        /* 側邊欄樣式由 components/sideBar.html 引用時一併載入 */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1030;
+            width: var(--sidebar-width, 240px);
+            height: 100vh;
+            background: var(--bs-primary);
+            color: #fff;
+            transition: transform 0.25s ease, width 0.25s ease;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .sidebar.collapsed {
+            transform: translateX(calc(-1 * var(--sidebar-width, 240px)));
+        }
+        
+        .sidebar-header {
+            padding: 1rem;
+            min-height: 56px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            flex-shrink: 0;
+        }
+        
+        .sidebar-brand-text {
+            font-weight: 500;
+            font-size: 1.1rem;
+            white-space: nowrap;
+        }
+        
+        .sidebar-toggle {
+            width: 32px;
+            height: 32px;
+            border-radius: 0.25rem;
+            opacity: 0.9;
+        }
+        
+        .sidebar-toggle:hover {
+            opacity: 1;
+            background: rgba(255,255,255,0.15);
+        }
+        
+        .sidebar-nav {
+            padding: 0.75rem 0;
+            flex: 1;
+        }
+        
+        .sidebar-nav .nav-link {
+            color: rgba(255,255,255,0.9);
+            padding: 0.6rem 1rem;
+            border-radius: 0;
+            display: flex;
+            align-items: center;
+        }
+        
+        .sidebar-nav .nav-link:hover {
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+        }
+        
+        .sidebar-open-btn {
+            position: fixed;
+            top: 0.75rem;
+            left: 0.75rem;
+            z-index: 1029;
+            width: 40px;
+            height: 40px;
+            border-radius: 0.35rem;
+            border: none;
+            background: var(--bs-primary);
+            color: #fff;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.2s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        
+        .sidebar-open-btn:hover {
+            opacity: 0.95;
+            color: #fff;
+        }
+        
+        .sidebar-open-btn i {
+            font-size: 1.25rem;
         }
         
         /* 卡片樣式 */
@@ -68,30 +171,10 @@
     
     {% block extra_css %}{% endblock %}
 </head>
-<body>
-    <!-- 導航欄 - 僅在登入時顯示 -->
+<body class="{% if session.get('user_id') %}layout-with-sidebar sidebar-visible{% endif %}">
+    <!-- 側邊欄 - 僅在登入時顯示 -->
     {% if session.get('user_id') %}
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-        <div class="container">
-            <a class="navbar-brand" href="{{ url_for('home') }}">Flask 登入系統</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('home') }}">首頁</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('profile') }}">個人資料</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#" onclick="confirmLogout(event)">登出</a>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
+    {% include "components/sideBar.html" %}
     {% endif %}
     
     <!-- 主內容 -->
@@ -102,7 +185,7 @@
     </main>
     
     <!-- 頁尾 -->
-    <footer class="bg-light text-center py-3 mt-5">
+    <footer class="page-footer bg-light text-center py-3 mt-5">
         <div class="container">
             <p class="text-muted mb-0">&copy; 2026 Flask 使用者登入系統</p>
         </div>
@@ -161,6 +244,39 @@
                 window.location.href = "{{ url_for('logout') }}";
             }
         }
+        
+        // 側邊欄收合/展開（用於 components/sideBar.html）
+        (function() {
+            var sidebar = document.getElementById('app-sidebar');
+            var toggleBtn = document.getElementById('sidebarToggle');
+            var openBtn = document.getElementById('sidebarOpenBtn');
+            var body = document.body;
+            if (!sidebar || !body) return;
+            var storageKey = 'sidebar-collapsed';
+            function collapse() {
+                sidebar.classList.add('collapsed');
+                body.classList.remove('sidebar-visible');
+                if (openBtn) openBtn.style.display = 'flex';
+                if (toggleBtn) {
+                    toggleBtn.setAttribute('aria-label', '展開側邊欄');
+                    toggleBtn.setAttribute('title', '展開側邊欄');
+                }
+                localStorage.setItem(storageKey, '1');
+            }
+            function expand() {
+                sidebar.classList.remove('collapsed');
+                body.classList.add('sidebar-visible');
+                if (openBtn) openBtn.style.display = 'none';
+                if (toggleBtn) {
+                    toggleBtn.setAttribute('aria-label', '收合側邊欄');
+                    toggleBtn.setAttribute('title', '收合側邊欄');
+                }
+                localStorage.setItem(storageKey, '0');
+            }
+            if (localStorage.getItem(storageKey) === '1') collapse();
+            if (toggleBtn) toggleBtn.addEventListener('click', collapse);
+            if (openBtn) openBtn.addEventListener('click', expand);
+        })();
         
         // 密碼顯示/隱藏切換（用於 components/passwordInput.html）
         document.addEventListener('click', function(e) {
