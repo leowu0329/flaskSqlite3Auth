@@ -12,6 +12,10 @@
             <i class="bi bi-chevron-left sidebar-toggle-icon" aria-hidden="true"></i>
         </button>
     </div>
+    <div class="sidebar-user px-3 py-2">
+        <i class="bi bi-person-circle me-2" aria-hidden="true"></i>
+        <span class="sidebar-user-name">{{ session.get('username', '') }}</span>
+    </div>
     <nav class="sidebar-nav">
         <ul class="nav flex-column">
             <li class="nav-item">
