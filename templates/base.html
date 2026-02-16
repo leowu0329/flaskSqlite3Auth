@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Flask 使用者登入系統{% endblock %}</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <!-- Toastr.js CSS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css" rel="stylesheet">
+    
+    <style>
+        /* 全域字體樣式 */
+        body {
+            font-family: 'Roboto', 'Noto Sans TC', sans-serif;
+        }
+        
+        /* 中文使用 Noto Sans TC */
+        body, h1, h2, h3, h4, h5, h6, p, span, div, a, button, input, textarea, select, label {
+            font-family: 'Noto Sans TC', 'Roboto', sans-serif;
+        }
+        
+        /* 英文使用 Roboto */
+        code, pre, .font-english {
+            font-family: 'Roboto', sans-serif;
+        }
+        
+        /* 導航欄樣式 */
+        .navbar-brand {
+            font-weight: 500;
+        }
+        
+        /* 主內容區域 */
+        .main-content {
+            min-height: calc(100vh - 200px);
+            padding: 2rem 0;
+        }
+        
+        /* 卡片樣式 */
+        .auth-card {
+            max-width: 450px;
+            margin: 2rem auto;
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            border-radius: 0.5rem;
+        }
+        
+        /* 表單樣式 */
+        .form-label {
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+        }
+        
+        /* 按鈕樣式 */
+        .btn {
+            font-weight: 500;
+        }
+    </style>
+    
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- 導航欄 - 僅在登入時顯示 -->
+    {% if session.get('user_id') %}
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('home') }}">Flask 登入系統</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('home') }}">首頁</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('profile') }}">個人資料</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="confirmLogout(event)">登出</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+    {% endif %}
+    
+    <!-- 主內容 -->
+    <main class="main-content">
+        <div class="container">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+    
+    <!-- 頁尾 -->
+    <footer class="bg-light text-center py-3 mt-5">
+        <div class="container">
+            <p class="text-muted mb-0">&copy; 2026 Flask 使用者登入系統</p>
+        </div>
+    </footer>
+    
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Toastr.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
+    
+    <script>
+        // Toastr 設定
+        toastr.options = {
+            "closeButton": true,
+            "debug": false,
+            "newestOnTop": true,
+            "progressBar": true,
+            "positionClass": "toast-top-right",
+            "preventDuplicates": false,
+            "onclick": null,
+            "showDuration": "300",
+            "hideDuration": "1000",
+            "timeOut": "5000",
+            "extendedTimeOut": "1000",
+            "showEasing": "swing",
+            "hideEasing": "linear",
+            "showMethod": "fadeIn",
+            "hideMethod": "fadeOut"
+        };
+        
+        // 顯示 Flask flash 訊息
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    {% if category == 'error' %}
+                        toastr.error("{{ message }}");
+                    {% elif category == 'success' %}
+                        toastr.success("{{ message }}");
+                    {% elif category == 'warning' %}
+                        toastr.warning("{{ message }}");
+                    {% else %}
+                        toastr.info("{{ message }}");
+                    {% endif %}
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        // 登出確認函數
+        function confirmLogout(event) {
+            event.preventDefault();
+            if (confirm('確定要登出嗎？')) {
+                window.location.href = "{{ url_for('logout') }}";
+            }
+        }
+    </script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

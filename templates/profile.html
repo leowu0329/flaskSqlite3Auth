@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}個人資料 - Flask 使用者登入系統{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h3 class="card-title mb-0">個人資料</h3>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-sm-4">
+                        <strong>使用者名稱：</strong>
+                    </div>
+                    <div class="col-sm-8">
+                        {{ user.username }}
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-sm-4">
+                        <strong>電子信箱：</strong>
+                    </div>
+                    <div class="col-sm-8">
+                        {{ user.email }}
+                        {% if user.email_verified %}
+                            <span class="badge bg-success ms-2">已驗證</span>
+                        {% else %}
+                            <span class="badge bg-warning ms-2">未驗證</span>
+                            <a href="{{ url_for('verify_email') }}" class="btn btn-sm btn-warning ms-2">前往驗證</a>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-sm-4">
+                        <strong>註冊時間：</strong>
+                    </div>
+                    <div class="col-sm-8">
+                        {{ user.created_at }}
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <a href="{{ url_for('edit_profile') }}" class="btn btn-primary">編輯個人資料</a>
+                    <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">返回首頁</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

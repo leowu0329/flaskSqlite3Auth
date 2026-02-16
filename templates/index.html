@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}首頁 - Flask 使用者登入系統{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        {% if user %}
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h1 class="card-title mb-4">歡迎，{{ user.username }}！</h1>
+                    
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="card bg-primary text-white mb-3">
+                                <div class="card-body">
+                                    <h5 class="card-title">使用者名稱</h5>
+                                    <p class="card-text fs-4">{{ user.username }}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card bg-info text-white mb-3">
+                                <div class="card-body">
+                                    <h5 class="card-title">電子信箱</h5>
+                                    <p class="card-text fs-6">{{ user.email }}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-{{ 'success' if user.email_verified else 'warning' }}" role="alert">
+                        <strong>信箱狀態：</strong>
+                        {% if user.email_verified %}
+                            <span class="badge bg-success">已驗證</span>
+                        {% else %}
+                            <span class="badge bg-warning">未驗證</span>
+                            <a href="{{ url_for('verify_email') }}" class="btn btn-sm btn-warning ms-2">前往驗證</a>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-start mt-4">
+                        <a href="{{ url_for('profile') }}" class="btn btn-primary btn-lg">查看個人資料</a>
+                        <a href="{{ url_for('edit_profile') }}" class="btn btn-outline-primary btn-lg">編輯個人資料</a>
+                    </div>
+                </div>
+            </div>
+        {% else %}
+            <div class="text-center py-5">
+                <h1 class="display-4 mb-4">歡迎使用 Flask 使用者登入系統</h1>
+                <p class="lead mb-5">這是一個完整的使用者認證系統，包含登入、註冊、信箱驗證、密碼重設等功能。</p>
+                
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <div class="card h-100 shadow-sm">
+                            <div class="card-body">
+                                <h3 class="card-title">🔐 安全登入</h3>
+                                <p class="card-text">使用安全的密碼雜湊技術保護您的帳號</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card h-100 shadow-sm">
+                            <div class="card-body">
+                                <h3 class="card-title">✉️ 信箱驗證</h3>
+                                <p class="card-text">透過電子信箱驗證確保帳號安全</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card h-100 shadow-sm">
+                            <div class="card-body">
+                                <h3 class="card-title">🔑 Token API</h3>
+                                <p class="card-text">支援 JWT Token 進行 API 認證</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-5">
+                    <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg me-3">登入</a>
+                    <a href="{{ url_for('register') }}" class="btn btn-outline-primary btn-lg">註冊</a>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

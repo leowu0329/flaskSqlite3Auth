@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}信箱驗證 - Flask 使用者登入系統{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6 col-lg-5">
+        <div class="card auth-card">
+            <div class="card-body p-4">
+                <h2 class="card-title text-center mb-4">信箱驗證</h2>
+                
+                {% if user and not user.email_verified %}
+                    <div class="alert alert-warning" role="alert">
+                        <h5 class="alert-heading">請驗證您的電子信箱</h5>
+                        <p>我們已發送驗證連結至：<strong>{{ user.email }}</strong></p>
+                        <p class="mb-0">請點擊郵件中的連結以完成驗證。</p>
+                    </div>
+                    
+                    <form method="POST" action="{{ url_for('resend_verification') }}">
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-outline-primary">重新發送驗證郵件</button>
+                        </div>
+                    </form>
+                    
+                    <div class="mt-3 text-center">
+                        <a href="{{ url_for('index') }}" class="text-decoration-none">返回首頁</a>
+                    </div>
+                {% else %}
+                    <div class="alert alert-success" role="alert">
+                        <h5 class="alert-heading">驗證成功！</h5>
+                        <p class="mb-0">您的電子信箱已經驗證完成。</p>
+                    </div>
+                    
+                    <div class="d-grid">
+                        <a href="{{ url_for('index') }}" class="btn btn-primary">返回首頁</a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
