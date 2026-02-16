@@ -3,6 +3,7 @@ Flask 全端使用者登入系統
 後端: Flask + SQLite3 + Jinja2
 功能: 登入/註冊/登出/信箱驗證/忘記密碼/重設密碼/首頁/修改個人資料/Token
 """
+import io
 import os
 import sqlite3
 import hashlib
@@ -14,7 +15,7 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from pathlib import Path
 from functools import wraps
-from flask import Flask, render_template, g, request, redirect, url_for, session, flash, jsonify
+from flask import Flask, render_template, g, request, redirect, url_for, session, flash, jsonify, send_file
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "your-secret-key-change-in-production")
@@ -54,6 +55,19 @@ def close_db(exception=None):
     db = g.pop("db", None)
     if db is not None:
         db.close()
+
+
+@app.before_request
+def ensure_session_role():
+    """若已登入但 session 沒有 role（例如舊登入），從資料庫補上，供側邊欄判斷是否顯示資料庫管理"""
+    if "user_id" in session and "role" not in session:
+        try:
+            db = get_db()
+            row = db.execute("SELECT role FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+            if row:
+                session["role"] = row["role"] or DEFAULT_ROLE
+        except Exception:
+            pass
 
 
 def init_db():
@@ -149,6 +163,20 @@ def login_required(f):
         if "user_id" not in session:
             flash("請先登入", "warning")
             return redirect(url_for("index"))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def admin_required(f):
+    """管理者驗證裝飾器（須為登入且 role 為管理者）"""
+    @wraps(f)
+    @login_required
+    def decorated_function(*args, **kwargs):
+        db = get_db()
+        row = db.execute("SELECT role FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+        if not row or row["role"] != "管理者":
+            flash("僅管理者可存取此功能", "error")
+            return redirect(url_for("home"))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -318,6 +346,234 @@ def option_page(num):
     return render_template("option.html", option_num=num)
 
 
+# ==================== 資料庫管理（僅管理者） ====================
+
+def _user_columns():
+    """users 表欄位（供匯出/匯入）"""
+    return [
+        "id", "username", "email", "password", "email_verified",
+        "birthday", "phone", "address", "work_region", "role",
+        "created_at", "updated_at"
+    ]
+
+
+@app.route("/db-manage", methods=["GET", "POST"])
+@admin_required
+def db_manage():
+    """資料庫管理頁：列出 users、新增、刪除"""
+    db = get_db()
+    if request.method == "POST":
+        action = request.form.get("action")
+        if action == "add":
+            username = request.form.get("username", "").strip()
+            email = request.form.get("email", "").strip().lower()
+            password = request.form.get("password", "")
+            if not username or not email or not password:
+                flash("新增時請填寫使用者名稱、電子信箱、密碼", "error")
+            elif len(password) < 6:
+                flash("密碼至少 6 個字元", "error")
+            else:
+                try:
+                    db.execute(
+                        """INSERT INTO users (username, email, password_hash, role)
+                           VALUES (?, ?, ?, ?)""",
+                        (username, email, hash_password(password), request.form.get("role") or DEFAULT_ROLE)
+                    )
+                    db.commit()
+                    flash("已新增使用者", "success")
+                except sqlite3.IntegrityError:
+                    flash("使用者名稱或電子信箱已存在", "error")
+        elif action == "delete":
+            uid = request.form.get("user_id", type=int)
+            if uid and uid != session.get("user_id"):
+                db.execute("DELETE FROM users WHERE id = ?", (uid,))
+                db.commit()
+                flash("已刪除該筆資料", "success")
+            elif uid == session.get("user_id"):
+                flash("無法刪除目前登入者", "error")
+            else:
+                flash("無效的刪除請求", "error")
+        return redirect(url_for("db_manage"))
+    users = db.execute(
+        """SELECT id, username, email, email_verified, birthday, phone, address, work_region, role, created_at
+           FROM users ORDER BY id"""
+    ).fetchall()
+    return render_template(
+        "db_manage.html",
+        users=users,
+        work_region_choices=WORK_REGION_CHOICES,
+        role_choices=ROLE_CHOICES,
+    )
+
+
+@app.route("/db-manage/edit/<int:user_id>", methods=["GET", "POST"])
+@admin_required
+def db_manage_edit(user_id):
+    """編輯單筆使用者"""
+    db = get_db()
+    user = db.execute(
+        "SELECT id, username, email, email_verified, birthday, phone, address, work_region, role FROM users WHERE id = ?",
+        (user_id,),
+    ).fetchone()
+    if not user:
+        flash("無此使用者", "error")
+        return redirect(url_for("db_manage"))
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        birthday = request.form.get("birthday", "").strip() or None
+        phone = request.form.get("phone", "").strip() or None
+        address = request.form.get("address", "").strip() or None
+        work_region = request.form.get("work_region", "").strip() or None
+        role = request.form.get("role", "").strip() or DEFAULT_ROLE
+        if not username or not email:
+            flash("使用者名稱與電子信箱為必填", "error")
+            return render_template("db_manage_edit.html", user=user, work_region_choices=WORK_REGION_CHOICES, role_choices=ROLE_CHOICES)
+        try:
+            if password:
+                if len(password) < 6:
+                    flash("密碼至少 6 個字元", "error")
+                    return render_template("db_manage_edit.html", user=user, work_region_choices=WORK_REGION_CHOICES, role_choices=ROLE_CHOICES)
+                db.execute(
+                    """UPDATE users SET username=?, email=?, password_hash=?, birthday=?, phone=?, address=?, work_region=?, role=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                    (username, email, hash_password(password), birthday, phone, address, work_region, role, user_id),
+                )
+            else:
+                db.execute(
+                    """UPDATE users SET username=?, email=?, birthday=?, phone=?, address=?, work_region=?, role=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                    (username, email, birthday, phone, address, work_region, role, user_id),
+                )
+            db.commit()
+            flash("已更新資料", "success")
+            return redirect(url_for("db_manage"))
+        except sqlite3.IntegrityError:
+            flash("使用者名稱或電子信箱已被其他帳號使用", "error")
+    return render_template(
+        "db_manage_edit.html",
+        user=user,
+        work_region_choices=WORK_REGION_CHOICES,
+        role_choices=ROLE_CHOICES,
+    )
+
+
+@app.route("/db-manage/export")
+@admin_required
+def db_manage_export():
+    """匯出 users 表為 Excel"""
+    try:
+        from openpyxl import Workbook
+    except ImportError:
+        flash("請安裝 openpyxl：pip install openpyxl", "error")
+        return redirect(url_for("db_manage"))
+    db = get_db()
+    rows = db.execute(
+        """SELECT id, username, email, email_verified, birthday, phone, address, work_region, role, created_at, updated_at
+           FROM users ORDER BY id"""
+    ).fetchall()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "users"
+    headers = _user_columns()
+    ws.append(headers)
+    for r in rows:
+        ws.append([
+            r["id"], r["username"], r["email"], "", r["email_verified"],
+            r["birthday"] or "", r["phone"] or "", r["address"] or "", r["work_region"] or "", r["role"] or "",
+            r["created_at"] or "", r["updated_at"] or "",
+        ])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(
+        buf,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=f"users_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+    )
+
+
+@app.route("/db-manage/import", methods=["POST"])
+@admin_required
+def db_manage_import():
+    """從 Excel 匯入 users（依 id 更新或依 username/email 新增）"""
+    if "file" not in request.files:
+        flash("請選擇要匯入的 Excel 檔案", "error")
+        return redirect(url_for("db_manage"))
+    f = request.files["file"]
+    if not f or not f.filename or not f.filename.lower().endswith((".xlsx", ".xls")):
+        flash("請上傳 .xlsx 或 .xls 檔案", "error")
+        return redirect(url_for("db_manage"))
+    try:
+        from openpyxl import load_workbook
+    except ImportError:
+        flash("請安裝 openpyxl：pip install openpyxl", "error")
+        return redirect(url_for("db_manage"))
+    wb = load_workbook(f, read_only=True, data_only=True)
+    ws = wb.active
+    if not ws:
+        flash("Excel 無有效工作表", "error")
+        return redirect(url_for("db_manage"))
+    def _cell_str(val):
+        if val is None:
+            return None
+        if hasattr(val, "strftime"):
+            return val.strftime("%Y-%m-%d")
+        s = str(val).strip()
+        return s if s else None
+
+    rows = list(ws.iter_rows(min_row=2, values_only=True))
+    db = get_db()
+    cols = _user_columns()
+    added, updated = 0, 0
+    for row in rows:
+        if not row or len(row) < 3:
+            continue
+        row = list(row)[: len(cols)]
+        while len(row) < len(cols):
+            row.append(None)
+        try:
+            uid = int(row[0]) if row[0] is not None else None
+        except (TypeError, ValueError):
+            uid = None
+        username = (row[1] or "").strip() if row[1] is not None else ""
+        email = (row[2] or "").strip().lower() if row[2] is not None else ""
+        password_cell = row[3]
+        password = (password_cell or "").strip() if password_cell is not None else ""
+        email_verified = 1 if row[4] in (1, "1", True, "True") else 0
+        birthday = _cell_str(row[5])
+        phone = (row[6] or "").strip() or None if row[6] is not None else None
+        address = (row[7] or "").strip() or None if row[7] is not None else None
+        work_region = (row[8] or "").strip() or None if row[8] is not None else None
+        role = (row[9] or "").strip() or DEFAULT_ROLE if row[9] is not None else DEFAULT_ROLE
+        if not username or not email:
+            continue
+        existing = db.execute("SELECT id, password_hash FROM users WHERE id = ?", (uid,)).fetchone() if uid else None
+        if existing:
+            if password:
+                db.execute(
+                    """UPDATE users SET username=?, email=?, password_hash=?, email_verified=?, birthday=?, phone=?, address=?, work_region=?, role=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                    (username, email, hash_password(password), email_verified, birthday, phone, address, work_region, role, uid),
+                )
+            else:
+                db.execute(
+                    """UPDATE users SET username=?, email=?, email_verified=?, birthday=?, phone=?, address=?, work_region=?, role=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                    (username, email, email_verified, birthday, phone, address, work_region, role, uid),
+                )
+            updated += 1
+        else:
+            pwd_hash = hash_password(password) if password else hash_password(secrets.token_urlsafe(8))
+            db.execute(
+                """INSERT INTO users (username, email, password_hash, email_verified, birthday, phone, address, work_region, role)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (username, email, pwd_hash, email_verified, birthday, phone, address, work_region, role),
+            )
+            added += 1
+    db.commit()
+    flash(f"匯入完成：新增 {added} 筆，更新 {updated} 筆", "success")
+    return redirect(url_for("db_manage"))
+
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     """註冊"""
@@ -395,13 +651,14 @@ def login():
     password_hash = hash_password(password)
     
     user = db.execute(
-        "SELECT id, username, email, email_verified FROM users WHERE (username = ? OR email = ?) AND password_hash = ?",
+        "SELECT id, username, email, email_verified, role FROM users WHERE (username = ? OR email = ?) AND password_hash = ?",
         (username, username, password_hash)
     ).fetchone()
     
     if user:
         session["user_id"] = user["id"]
         session["username"] = user["username"]
+        session["role"] = user["role"] or DEFAULT_ROLE
         flash(f"歡迎回來，{user['username']}！", "success")
         return redirect(url_for("home"))
     else:
@@ -701,7 +958,7 @@ def edit_profile():
             query = f"UPDATE users SET {', '.join(update_fields)} WHERE id = ?"
             db.execute(query, update_values)
             db.commit()
-            
+            session["role"] = role
             if email_changed:
                 flash("個人資料已更新！請重新驗證您的電子信箱", "success")
             else:

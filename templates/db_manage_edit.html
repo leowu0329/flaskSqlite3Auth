@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}編輯資料 - 資料庫管理{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h3 class="card-title mb-0">編輯使用者 (id: {{ user.id }})</h3>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('db_manage_edit', user_id=user.id) }}">
+                    <div class="mb-3">
+                        <label for="username" class="form-label">使用者名稱 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="username" name="username" value="{{ user.username }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="email" class="form-label">電子信箱 <span class="text-danger">*</span></label>
+                        <input type="email" class="form-control" id="email" name="email" value="{{ user.email }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">密碼（選填，不填則不變更）</label>
+                        <input type="password" class="form-control" id="password" name="password" minlength="6">
+                    </div>
+                    <div class="mb-3">
+                        <label for="birthday" class="form-label">生日</label>
+                        <input type="date" class="form-control" id="birthday" name="birthday" value="{{ user.birthday or '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label for="phone" class="form-label">手機</label>
+                        <input type="text" class="form-control" id="phone" name="phone" value="{{ user.phone or '' }}" maxlength="20">
+                    </div>
+                    <div class="mb-3">
+                        <label for="address" class="form-label">住址</label>
+                        <input type="text" class="form-control" id="address" name="address" value="{{ user.address or '' }}" maxlength="200">
+                    </div>
+                    <div class="mb-3">
+                        <label for="work_region" class="form-label">工作轄區</label>
+                        <select class="form-select" id="work_region" name="work_region">
+                            {% for opt in work_region_choices %}
+                            <option value="{{ opt }}" {% if (user.work_region or '') == opt %}selected{% endif %}>{{ opt if opt else '（請選擇）' }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="role" class="form-label">身分</label>
+                        <select class="form-select" id="role" name="role">
+                            {% for opt in role_choices %}
+                            <option value="{{ opt }}" {% if (user.role or '一般使用者') == opt %}selected{% endif %}>{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">儲存</button>
+                        <a href="{{ url_for('db_manage') }}" class="btn btn-outline-secondary">取消</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
