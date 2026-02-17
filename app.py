@@ -1,6 +1,6 @@
 """
 Flask 全端使用者登入系統
-後端: Flask + SQLite3 + Jinja2
+後端: Flask + SQLite3（開發）/ Vercel Postgres（生產）+ Jinja2
 功能: 登入/註冊/登出/信箱驗證/忘記密碼/重設密碼/首頁/修改個人資料/Token
 """
 import io
@@ -15,6 +15,7 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from pathlib import Path
 from functools import wraps
+from urllib.parse import urlparse, unquote
 from flask import Flask, render_template, g, request, redirect, url_for, session, flash, jsonify, send_file
 
 app = Flask(__name__)
@@ -31,13 +32,37 @@ app.config["MAIL_USERNAME"] = os.environ.get("MAIL_USERNAME", "")
 app.config["MAIL_PASSWORD"] = os.environ.get("MAIL_PASSWORD", "")
 app.config["MAIL_FROM"] = os.environ.get("MAIL_FROM", app.config["MAIL_USERNAME"])
 
-# SQLite3 資料庫路徑（Vercel 上未設定時自動使用 /tmp/app.db，避免寫入唯讀檔案系統）
-if os.environ.get("DATABASE_PATH"):
-    DATABASE = Path(os.environ["DATABASE_PATH"])
-elif os.environ.get("VERCEL"):
-    DATABASE = Path("/tmp/app.db")
+# 資料庫：開發用 SQLite，生產（Vercel）用 Postgres（環境變數 POSTGRES_URL / DATABASE_URL）
+_postgres_url = (os.environ.get("POSTGRES_URL") or os.environ.get("DATABASE_URL") or "").strip()
+USE_POSTGRES = bool(_postgres_url and _postgres_url.lower().startswith("postgres"))
+
+if USE_POSTGRES:
+    import pg8000
+    DATABASE = None  # 不使用檔案路徑
 else:
-    DATABASE = Path(__file__).parent / "instance" / "app.db"
+    pg8000 = None
+    # SQLite3 資料庫路徑（開發環境：instance/app.db）
+    if os.environ.get("DATABASE_PATH"):
+        DATABASE = Path(os.environ["DATABASE_PATH"])
+    elif os.environ.get("VERCEL"):
+        DATABASE = Path("/tmp/app.db")
+    else:
+        DATABASE = Path(__file__).parent / "instance" / "app.db"
+
+# 統一 IntegrityError（SQLite / Postgres）
+DBIntegrityError = pg8000.IntegrityError if USE_POSTGRES else sqlite3.IntegrityError
+
+
+def _parse_postgres_url(url):
+    """將 postgres://... 轉成 pg8000.connect(**kwargs) 所需參數"""
+    parsed = urlparse(url)
+    return {
+        "host": parsed.hostname or "localhost",
+        "port": int(parsed.port) if parsed.port else 5432,
+        "user": parsed.username or "postgres",
+        "password": unquote(parsed.password) if parsed.password else "",
+        "database": (parsed.path or "/").lstrip("/") or "postgres",
+    }
 
 # 個人資料選項（工作轄區、身分）
 WORK_REGION_CHOICES = ["", "北北基", "桃竹苗", "中彰投", "雲嘉南", "高屏"]
@@ -45,15 +70,65 @@ ROLE_CHOICES = ["一般使用者", "管理者"]
 DEFAULT_ROLE = "一般使用者"
 
 
+class _DictCursorWrapper:
+    """包裝 pg8000 cursor，使 fetchone/fetchall 回傳 dict（以欄位名為 key）"""
+    def __init__(self, cursor):
+        self._cur = cursor
+        self._names = [d[0] for d in (cursor.description or [])]
+
+    def fetchone(self):
+        row = self._cur.fetchone()
+        return dict(zip(self._names, row)) if row is not None else None
+
+    def fetchall(self):
+        return [dict(zip(self._names, row)) for row in self._cur.fetchall()]
+
+
+class _PostgresDbWrapper:
+    """Postgres 連線包裝：提供與 SQLite 相容的 execute(?)/commit/cursor/close（使用 pg8000）"""
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, sql, params=()):
+        sql = sql.replace("?", "%s")
+        cur = self._conn.cursor()
+        cur.execute(sql, params)
+        return _DictCursorWrapper(cur)
+
+    def commit(self):
+        self._conn.commit()
+
+    def cursor(self):
+        return _PostgresCursorWrapper(self._conn)
+
+    def close(self):
+        self._conn.close()
+
+
+class _PostgresCursorWrapper:
+    """Postgres cursor：DDL 用，將 ? 轉成 %s"""
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, sql, params=()):
+        sql = sql.replace("?", "%s")
+        cur = self._conn.cursor()
+        cur.execute(sql, params)
+
+
 def get_db():
-    """取得 SQLite 連線"""
+    """取得資料庫連線（開發：SQLite，生產：Vercel Postgres）"""
     if "db" not in g:
-        try:
-            DATABASE.parent.mkdir(parents=True, exist_ok=True)
-        except OSError:
-            pass  # 例如 /tmp 已存在或唯讀環境
-        g.db = sqlite3.connect(str(DATABASE))
-        g.db.row_factory = sqlite3.Row
+        if USE_POSTGRES:
+            g.db = _PostgresDbWrapper(pg8000.connect(**_parse_postgres_url(_postgres_url)))
+        else:
+            try:
+                DATABASE.parent.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                pass
+            conn = sqlite3.connect(str(DATABASE))
+            conn.row_factory = sqlite3.Row
+            g.db = conn
     return g.db
 
 
@@ -79,56 +154,83 @@ def ensure_session_role():
 
 
 def init_db():
-    """初始化資料庫"""
+    """初始化資料庫（開發：SQLite，生產：Postgres）"""
     db = get_db()
     cursor = db.cursor()
-    
-    # 使用者表
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            email_verified INTEGER DEFAULT 0,
-            verification_token TEXT,
-            reset_token TEXT,
-            reset_token_expires DATETIME,
-            birthday DATE,
-            phone TEXT,
-            address TEXT,
-            work_region TEXT,
-            role TEXT DEFAULT '一般使用者',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    
-    # 既有資料庫補加新欄位（遷移）
-    for col_sql in [
-        "ALTER TABLE users ADD COLUMN birthday DATE",
-        "ALTER TABLE users ADD COLUMN phone TEXT",
-        "ALTER TABLE users ADD COLUMN address TEXT",
-        "ALTER TABLE users ADD COLUMN work_region TEXT",
-        "ALTER TABLE users ADD COLUMN role TEXT DEFAULT '一般使用者'",
-    ]:
-        try:
-            cursor.execute(col_sql)
-        except sqlite3.OperationalError:
-            pass  # 欄位已存在
-    
-    # Token 表（用於 API 認證）
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS tokens (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            token TEXT UNIQUE NOT NULL,
-            expires_at DATETIME NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-    """)
-    
+
+    if USE_POSTGRES:
+        # Postgres DDL（Vercel Postgres / Neon）
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(255) UNIQUE NOT NULL,
+                email VARCHAR(255) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                email_verified SMALLINT DEFAULT 0,
+                verification_token VARCHAR(255),
+                reset_token VARCHAR(255),
+                reset_token_expires TIMESTAMP,
+                birthday DATE,
+                phone VARCHAR(50),
+                address TEXT,
+                work_region VARCHAR(50),
+                role VARCHAR(50) DEFAULT '一般使用者',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tokens (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                token VARCHAR(255) UNIQUE NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+    else:
+        # SQLite DDL
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                email_verified INTEGER DEFAULT 0,
+                verification_token TEXT,
+                reset_token TEXT,
+                reset_token_expires DATETIME,
+                birthday DATE,
+                phone TEXT,
+                address TEXT,
+                work_region TEXT,
+                role TEXT DEFAULT '一般使用者',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        # 既有 SQLite 補加新欄位（遷移）
+        for col_sql in [
+            "ALTER TABLE users ADD COLUMN birthday DATE",
+            "ALTER TABLE users ADD COLUMN phone TEXT",
+            "ALTER TABLE users ADD COLUMN address TEXT",
+            "ALTER TABLE users ADD COLUMN work_region TEXT",
+            "ALTER TABLE users ADD COLUMN role TEXT DEFAULT '一般使用者'",
+        ]:
+            try:
+                cursor.execute(col_sql)
+            except sqlite3.OperationalError:
+                pass  # 欄位已存在
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                token TEXT UNIQUE NOT NULL,
+                expires_at DATETIME NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
     db.commit()
 
 
@@ -389,7 +491,7 @@ def db_manage():
                     )
                     db.commit()
                     flash("已新增使用者", "success")
-                except sqlite3.IntegrityError:
+                except DBIntegrityError:
                     flash("使用者名稱或電子信箱已存在", "error")
         elif action == "delete":
             uid = request.form.get("user_id", type=int)
@@ -455,7 +557,7 @@ def db_manage_edit(user_id):
             db.commit()
             flash("已更新資料", "success")
             return redirect(url_for("db_manage"))
-        except sqlite3.IntegrityError:
+        except DBIntegrityError:
             flash("使用者名稱或電子信箱已被其他帳號使用", "error")
     return render_template(
         "db_manage_edit.html",
