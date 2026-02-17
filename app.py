@@ -31,8 +31,8 @@ app.config["MAIL_USERNAME"] = os.environ.get("MAIL_USERNAME", "")
 app.config["MAIL_PASSWORD"] = os.environ.get("MAIL_PASSWORD", "")
 app.config["MAIL_FROM"] = os.environ.get("MAIL_FROM", app.config["MAIL_USERNAME"])
 
-# SQLite3 資料庫路徑
-DATABASE = Path(__file__).parent / "instance" / "app.db"
+# SQLite3 資料庫路徑（Vercel 等無持久化磁碟時請設 DATABASE_PATH 為 /tmp/app.db）
+DATABASE = Path(os.environ["DATABASE_PATH"]) if os.environ.get("DATABASE_PATH") else Path(__file__).parent / "instance" / "app.db"
 
 # 個人資料選項（工作轄區、身分）
 WORK_REGION_CHOICES = ["", "北北基", "桃竹苗", "中彰投", "雲嘉南", "高屏"]
