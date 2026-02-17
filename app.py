@@ -31,8 +31,13 @@ app.config["MAIL_USERNAME"] = os.environ.get("MAIL_USERNAME", "")
 app.config["MAIL_PASSWORD"] = os.environ.get("MAIL_PASSWORD", "")
 app.config["MAIL_FROM"] = os.environ.get("MAIL_FROM", app.config["MAIL_USERNAME"])
 
-# SQLite3 資料庫路徑（Vercel 等無持久化磁碟時請設 DATABASE_PATH 為 /tmp/app.db）
-DATABASE = Path(os.environ["DATABASE_PATH"]) if os.environ.get("DATABASE_PATH") else Path(__file__).parent / "instance" / "app.db"
+# SQLite3 資料庫路徑（Vercel 上未設定時自動使用 /tmp/app.db，避免寫入唯讀檔案系統）
+if os.environ.get("DATABASE_PATH"):
+    DATABASE = Path(os.environ["DATABASE_PATH"])
+elif os.environ.get("VERCEL"):
+    DATABASE = Path("/tmp/app.db")
+else:
+    DATABASE = Path(__file__).parent / "instance" / "app.db"
 
 # 個人資料選項（工作轄區、身分）
 WORK_REGION_CHOICES = ["", "北北基", "桃竹苗", "中彰投", "雲嘉南", "高屏"]
@@ -43,8 +48,11 @@ DEFAULT_ROLE = "一般使用者"
 def get_db():
     """取得 SQLite 連線"""
     if "db" not in g:
-        DATABASE.parent.mkdir(parents=True, exist_ok=True)
-        g.db = sqlite3.connect(DATABASE)
+        try:
+            DATABASE.parent.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass  # 例如 /tmp 已存在或唯讀環境
+        g.db = sqlite3.connect(str(DATABASE))
         g.db.row_factory = sqlite3.Row
     return g.db
 
@@ -1068,7 +1076,13 @@ def user_info_api():
     }), 200
 
 
-if __name__ == "__main__":
-    with app.app_context():
+# 模組載入時即初始化資料表（Vercel 等環境不會執行 __main__，須在此執行）
+with app.app_context():
+    try:
         init_db()
+    except Exception as e:
+        import sys
+        print(f"[init_db] {e}", file=sys.stderr)
+
+if __name__ == "__main__":
     app.run(debug=True)
